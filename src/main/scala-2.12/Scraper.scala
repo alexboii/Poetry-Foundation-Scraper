@@ -9,27 +9,55 @@ import scala.collection.JavaConverters._
 import org.jsoup.nodes.{Document, Element}
 import org.jsoup.select.Elements
 import org.jsoup.{HttpStatusException, Jsoup}
-import scala.async.Async.{async, await}
+//import scala.async.Async.{async, await}
+import play.api.libs.json._;
+
+import org.json4s._
+import org.json4s.jackson.Serialization
+import org.json4s.jackson.Serialization.write;
 
 
-class Scraper {
+object Scraper {
 
-  def parse(body: Document, url: URL, id: Int): Poem = {
+  implicit val formats = DefaultFormats;
 
-    def formatSet = (x: Elements) => x.asScala.map(x => x.text() + "\n").toSet.toVector;
+  def parseAsync(body: Document, url: String, id: Int): Poem = {
+
+    def formatSet = (x: Elements) => x.asScala.toVector.map(x => x.text().trim()).distinct;
+
+    var title, author_name = "";
+    var content, keywords, terms, period, region = Vector[String]();
 
     try {
-      val title = body.select("span.hdg.hdg_1").text();
-      val author_name = body.select("span.hdg.hdg_utility").select("a").text();
-      val content = body.select("div.poem").select("div").asScala.toVector.map(x => x.text() + "\n").tail;
-      val keywords = formatSet(body.select("div.feature-bd.feature-bd_emphasize"));
-      val terms = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poems-and-poets/poems#poetic-terms]"));
-      val period = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poems-and-poets/poets#school-period]"));
-      val region = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poems-and-poets/poets#geography]"));
+      title = body.select("h1.c-hdgSans.c-hdgSans_2.c-mix-hdgSans_inline").text();
 
-      return Poem(id, title, author_name, content, URL, keywords, period, region, terms);
-
+      if (title.isEmpty())
+        throw new IllegalArgumentException("No title available");
     }
+    try {
+      author_name = body.select("span.c-txt.c-txt_attribution").select("a").text();
+
+      if (author_name.isEmpty())
+        throw new IllegalArgumentException("No author available");
+    }
+    try {
+      content = body.select("div.c-feature-bd").select("div").asScala.toVector.map(x => x.text());
+
+      if (content.length == 0)
+        throw new IllegalArgumentException("No content available");
+    }
+    try {
+      keywords = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poems/browse#topics]"));
+    }
+    try {
+      period = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poets/browse#school-period]"));
+    }
+    try {
+      region = formatSet(body.select("a[href^=https://www.poetryfoundation.org/poets/browse#region]"));
+    }
+
+
+    return Poem(id, title, author_name, content, url, keywords, period, region);
 
     // TODO: Include scala-async library / mechanism so that we can search year of poem
 
